@@ -1,0 +1,22 @@
+# Core ML / DL
+torch
+torchvision
+pillow
+numpy
+pandas
+scikit-learn
+
+# API & Serving
+fastapi
+uvicorn
+python-multipart
+email-validator>=2.0
+
+# MLOps / Tracking
+mlflow
+boto3
+
+# Utils
+tqdm
+requests
+python-dotenv
