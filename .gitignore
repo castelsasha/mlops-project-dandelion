@@ -33,3 +33,14 @@ docker-compose.override.yml
 
 # Ignore temporary outputs
 tmp/
+
+# Python caches
+__pycache__/
+*.pyc
+
+# virtual env
+.venv/
+
+# MLflow local DB
+mlruns/
+mlflow.db
