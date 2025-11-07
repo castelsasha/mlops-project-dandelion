@@ -1,63 +1,67 @@
-import io
-import torch
+import os
 import boto3
 from fastapi import FastAPI, UploadFile, File, HTTPException
-from PIL import Image
+
 from src.model.inference import predict_image, load_latest_model
 from src.utils.config import (
-    S3_ENDPOINT_URL,
-    S3_ACCESS_KEY,
-    S3_SECRET_KEY,
-    S3_MODEL_BUCKET,
+    S3_ENDPOINT_URL, S3_ACCESS_KEY, S3_SECRET_KEY,
+    S3_MODEL_BUCKET, LOCAL_MODEL_DIR
 )
 
 app = FastAPI(title="Dandelion vs Grass Classifier API")
 
-# Chargement du modèle (local ou S3)
-print("[API] Initialisation du modèle...")
-
-try:
-    # Connexion à MinIO (S3)
+# --------------------------------------------------
+# téléchargement auto du dernier .pt depuis S3
+# --------------------------------------------------
+def _download_latest_from_s3():
     s3 = boto3.client(
         "s3",
         endpoint_url=S3_ENDPOINT_URL,
         aws_access_key_id=S3_ACCESS_KEY,
         aws_secret_access_key=S3_SECRET_KEY,
     )
+    try:
+        resp = s3.list_objects_v2(Bucket=S3_MODEL_BUCKET, Prefix="models/")
+    except Exception as e:
+        print(f"[API] MinIO indisponible / mauvaise conf: {e}")
+        return None
 
-    # Liste des objets dans le bucket
-    response = s3.list_objects_v2(Bucket=S3_MODEL_BUCKET, Prefix="models/")
-    if "Contents" not in response:
-        print("[API] Aucun modèle trouvé sur MinIO, fallback en local.")
-        model = load_latest_model()
-    else:
-        # Télécharge le plus récent modèle
-        files = sorted(response["Contents"], key=lambda x: x["LastModified"], reverse=True)
-        latest_key = files[0]["Key"]
+    if "Contents" not in resp or not resp["Contents"]:
+        print(f"[API] Aucun .pt sous s3://{S3_MODEL_BUCKET}/models/ -- fallback local")
+        return None
 
-        local_path = f"/tmp/{latest_key.split('/')[-1]}"
-        s3.download_file(S3_MODEL_BUCKET, latest_key, local_path)
-        print(f"[API] Modèle téléchargé depuis MinIO: {latest_key}")
+    files = sorted(resp["Contents"], key=lambda x: x["LastModified"], reverse=True)
+    latest_key = files[0]["Key"]
 
-        # Charge le modèle
-        model = load_latest_model()
-        print("[API] Modèle chargé avec succès ✅")
+    os.makedirs(LOCAL_MODEL_DIR, exist_ok=True)
+    local_path = os.path.join(LOCAL_MODEL_DIR, os.path.basename(latest_key))
+    s3.download_file(S3_MODEL_BUCKET, latest_key, local_path)
+    print(f"[API] Modèle téléchargé: {latest_key} -> {local_path}")
+    return local_path
 
+
+print("[API] Initialisation du modèle...")
+try:
+    _download_latest_from_s3()
 except Exception as e:
-    print(f"[API] ⚠️ Erreur MinIO, chargement local: {e}")
-    model = load_latest_model()
+    print(f"[API] ⚠️ Téléchargement depuis MinIO impossible: {e}")
 
-# Healthcheck
+try:
+    model = load_latest_model()
+    print("[API] Modèle chargé ✅")
+except Exception as e:
+    print(f"[API] ❌ Impossible de charger le modèle local: {e}")
+    model = None
+
+
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "ok", "model_loaded": bool(model)}
 
-# Endpoint principal
 @app.post("/predict")
 async def predict(file: UploadFile = File(...)):
-    """
-    Envoie une image -> renvoie la classe prédite + confiance
-    """
+    if model is None:
+        raise HTTPException(status_code=500, detail="Modèle non chargé")
     try:
         image_bytes = await file.read()
         label, confidence = predict_image(model, image_bytes)

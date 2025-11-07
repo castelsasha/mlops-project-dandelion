@@ -1,22 +1,18 @@
-# Core ML / DL
-torch
-torchvision
-pillow
-numpy
-pandas
-scikit-learn
-
-# API & Serving
-fastapi
-uvicorn
-python-multipart
-email-validator>=2.0
-
-# MLOps / Tracking
-mlflow
-boto3
-
-# Utils
-tqdm
-requests
-python-dotenv
+fastapi==0.120.2
+uvicorn==0.38.0
+pillow==10.4.0
+numpy==2.2.1
+pandas==2.3.3
+scikit-learn==1.7.2
+torch==2.9.0
+torchvision==0.24.0
+tqdm==4.67.1
+requests==2.32.5
+python-dotenv==1.2.1
+mlflow==3.5.1
+boto3==1.40.62
+python-multipart==0.0.20
+streamlit==1.39.0
+prometheus-fastapi-instrumentator==6.1.0
+psycopg2-binary==2.9.9
+mysql-connector-python==9.1.0

@@ -1,0 +1,35 @@
+name: Local CICD (no registry)
+
+on:
+  push:
+    branches: ["arnaud-dev"]
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Docker image locally
+        run: |
+          docker build -f docker/api.Dockerfile -t dandelion-api:latest .
+
+      - name: Apply manifests (idempotent)
+        run: |
+          kubectl apply -f k8s/namespace.yaml
+          kubectl apply -f k8s/configmap.yaml
+          kubectl apply -f k8s/secret.yaml || true
+          kubectl apply -f k8s/deployment.yaml
+          kubectl apply -f k8s/service.yaml
+
+      - name: Restart deployment
+        run: |
+          kubectl -n dandelion rollout restart deployment dandelion-api
+          kubectl -n dandelion rollout status deployment dandelion-api --timeout=120s
+
+      - name: Smoke test
+        run: |
+          # Docker Desktop/Minikube: service sur localhost (selon ton mapping)
+          sleep 2
+          curl -f http://localhost:8000/health

@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dandelion-api-config
+  namespace: dandelion
+data:
+  # MLflow
+  MLFLOW_TRACKING_URI: "http://mlflow.dandelion.svc.cluster.local:5000"
+  MLFLOW_EXPERIMENT_NAME: "dandelion_vs_grass"
+
+  # MinIO / S3
+  S3_ENDPOINT_URL: "http://minio.dandelion.svc.cluster.local:9000"
+  S3_DATA_BUCKET: "plant-images"
+  S3_MODEL_BUCKET: "plant-models"
+
+  # API / Model
+  LOCAL_MODEL_DIR: "/models"
+  MODEL_NAME: "dandelion-grass"
+  MODEL_STAGE: "Production"

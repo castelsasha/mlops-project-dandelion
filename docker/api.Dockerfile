@@ -1,22 +1,22 @@
-# docker/api.Dockerfile
 FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-# Installer dépendances système
+# deps systèmes pour Pillow
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc libjpeg-dev zlib1g-dev \
-    && rm -rf /var/lib/apt/lists/*
+  && rm -rf /var/lib/apt/lists/*
 
-# Copier fichiers nécessaires
 COPY requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+RUN python -m pip install --upgrade pip \
+ && pip install --no-cache-dir -r requirements.txt
 
-# Copier le code source
+# code
+COPY webapp /app/webapp
 COPY src /app/src
 
-# Port exposé
 EXPOSE 8000
-
-# Commande de démarrage
 CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -1,0 +1,15 @@
+.venv
+__pycache__/
+*.pyc
+
+.git
+.gitignore
+.env
+
+.ipynb_checkpoints/
+
+mlruns/
+models/
+data/
+minio-data/
+logs/

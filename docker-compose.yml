@@ -1,0 +1,76 @@
+name: mlops-project-dandelion
+
+services:
+
+  minio:
+    image: minio/minio:latest
+    container_name: dandelion-minio
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  init-minio:
+    image: minio/mc:latest
+    container_name: mlops-project-dandelion-init-minio
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command: |
+      set -euo pipefail
+      mc alias set local http://minio:9000 minioadmin minioadmin
+      mc mb -p --ignore-existing local/plant-models
+      mc mb -p --ignore-existing local/plant-images
+      mc ls local
+    restart: "no"
+
+  mlflow:
+    build:
+      context: .
+      dockerfile: docker/mlflow.Dockerfile
+    container_name: dandelion-mlflow
+    depends_on:
+      minio:
+        condition: service_healthy
+      init-minio:
+        condition: service_completed_successfully
+    environment:
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      AWS_REGION: us-east-1
+      AWS_S3_FORCE_PATH_STYLE: "true"
+    ports:
+      - "5001:5000"
+    volumes:
+      - mlflow_data:/mlflow
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16
+    container_name: dandelion-postgres
+    environment:
+      POSTGRES_DB: plants
+      POSTGRES_USER: mlops
+      POSTGRES_PASSWORD: mlops
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+volumes:
+  minio_data:
+  mlflow_data:
+  pg_data:
