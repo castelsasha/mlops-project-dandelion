@@ -1,19 +1,29 @@
+# k8s/configmap.yaml
+# Purpose: Non-sensitive configuration for the API Pod (endpoints, bucket names, model options).
+# Notes:
+# - Secrets (access keys) must NOT go here; use a Secret object instead.
+# - Values are read as environment variables by the container.
+
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: dandelion-api-config
   namespace: dandelion
 data:
-  # MLflow
-  MLFLOW_TRACKING_URI: "http://mlflow.dandelion.svc.cluster.local:5000"
+  # ---- MLflow tracking (Cluster-internal Service DNS) ----
+  MLFLOW_TRACKING_URI: "http://mlflow.dandelion.svc.cluster.local:5001"
   MLFLOW_EXPERIMENT_NAME: "dandelion_vs_grass"
 
-  # MinIO / S3
+  # ---- MinIO / S3 endpoint and buckets ----
+  # Use the in-cluster Service DNS name for MinIO.
   S3_ENDPOINT_URL: "http://minio.dandelion.svc.cluster.local:9000"
   S3_DATA_BUCKET: "plant-images"
   S3_MODEL_BUCKET: "plant-models"
 
-  # API / Model
+  # ---- API / Model local cache path in the container ----
   LOCAL_MODEL_DIR: "/models"
+
+  # ---- Optional: MLflow Registry usage (not required for basic serving) ----
+  # These are read by the training/logging code; the API primarily pulls directly from S3.
   MODEL_NAME: "dandelion-grass"
   MODEL_STAGE: "Production"

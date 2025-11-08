@@ -1,33 +1,36 @@
+# -----------------------------------------------------------------------------
+# Optional SQL layer for the assignment: MySQL + Adminer UI.
+# This is used by the ETL script that reads plants_data and pushes to MinIO.
+# -----------------------------------------------------------------------------
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: dandelion-postgres
+  mysql:
+    image: mysql:8.4
+    container_name: dandelion-mysql
     environment:
-      POSTGRES_DB: plants
-      POSTGRES_USER: mlops
-      POSTGRES_PASSWORD: mlops
+      # Read from host .env (MYSQL_* vars) when you `docker compose ... --env-file .env`
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DB}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
     ports:
-      - "5432:5432"
-    volumes:
-      - pg_data:/var/lib/postgresql/data
+      - "3306:3306"  # expose MySQL to host (e.g., for local scripts)
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U mlops -d plants"]
+      # Wait for DB to accept connections before running SQL init/ETL.
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u${MYSQL_USER}", "-p${MYSQL_PASSWORD}"]
       interval: 5s
       timeout: 3s
-      retries: 10
+      retries: 20
+    volumes:
+      - mysql_data:/var/lib/mysql
     restart: unless-stopped
 
   adminer:
+    # Lightweight SQL UI at http://127.0.0.1:8080
     image: adminer:4
     container_name: dandelion-adminer
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      ADMINER_DEFAULT_SERVER: postgres
     ports:
       - "8080:8080"
     restart: unless-stopped
 
 volumes:
-  pg_data:
+  mysql_data:

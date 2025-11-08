@@ -2,11 +2,11 @@ name: Deploy API to Kubernetes (GHCR)
 
 on:
   push:
-    branches: ["main"]
+    branches: ["main"]     # deploy only from main
 
 permissions:
   contents: read
-  packages: write
+  packages: write          # needed to push to GHCR
 
 env:
   IMAGE_NAME: ghcr.io/${{ github.repository }}/dandelion-api
@@ -15,11 +15,18 @@ env:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+
     steps:
-      - uses: actions/checkout@v4
+      # 1) Checkout
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: docker/setup-buildx-action@v3
+      # 2) Enable BuildKit/Buildx for multi-platform & cache support
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
+      # 3) Login to GHCR using GITHUB_TOKEN
       - name: Login to GHCR
         uses: docker/login-action@v3
         with:
@@ -27,6 +34,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # 4) Build & push API image
       - name: Build & Push
         uses: docker/build-push-action@v6
         with:
@@ -36,7 +44,11 @@ jobs:
           tags: |
             ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
             ${{ env.IMAGE_NAME }}:latest
+          # optional: enable caching between builds
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
+      # 5) Prepare kubectl if a kubeconfig secret is set
       - name: Set up kubectl
         if: ${{ secrets.KUBE_CONFIG_DATA != '' }}
         run: |
@@ -45,9 +57,18 @@ jobs:
         env:
           KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
 
+      # 6) Update image + wait for rollout
       - name: Update deployment image
         if: ${{ env.KUBECONFIG != '' }}
         run: |
+          set -euo pipefail
           kubectl -n dandelion set image deployment/dandelion-api \
             dandelion-api=${IMAGE_NAME}:${IMAGE_TAG} --record
           kubectl -n dandelion rollout status deployment/dandelion-api --timeout=180s
+
+      # 7) Post-deploy smoke test (optional: if you expose a LoadBalancer/IP)
+      - name: Smoke test
+        if: ${{ env.KUBECONFIG != '' }}
+        run: |
+          echo "Run a cluster-internal probe or an external curl if you have ingress."
+          # Example if you had a port-forward or internal service check.

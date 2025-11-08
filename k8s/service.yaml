@@ -1,3 +1,9 @@
+# k8s/service.yaml
+# Purpose: Expose the API Deployment via a Service.
+# Type:
+# - LoadBalancer works on Docker Desktop/Minikube (or cloud).
+# - If your environment has no LB, switch to NodePort or add an Ingress.
+
 apiVersion: v1
 kind: Service
 metadata:
@@ -6,9 +12,10 @@ metadata:
 spec:
   selector:
     app: dandelion-api
-  type: LoadBalancer
+  type: LoadBalancer       # change to NodePort if no LB is available
   ports:
     - name: http
       protocol: TCP
-      port: 8000
-      targetPort: 8000
+      port: 8000           # service port
+      targetPort: 8000     # container port (FastAPI/Uvicorn)
+      # nodePort: 30080    # uncomment if using type: NodePort (range usually 30000-32767)

@@ -1,102 +1,116 @@
-# MLOps Project — Image Classification (Dandelion vs Grass)
+# MLOps Project — Dandelion vs Grass Classification
 
-This repository implements a full end-to-end MLOps pipeline for a binary image classifier that distinguishes **dandelions** from **grass**.
+Goal: classify images and detect if the plant is **dandelion** or **grass**.
 
-This project follows the assignment requirements:
+This repository is not “just training a model”.  
+It implements a COMPLETE modern MLOps stack:
 
-- Modular code (preprocessing, training, inference, web UI)
-- Model tracking + versioning with MLflow
-- Model artifacts stored in S3 (MinIO)
-- Deployable inference API (FastAPI)
-- Interactive WebApp (Streamlit)
-- Dockerized services
-- Ready for CI/CD & Kubernetes deployment
+- reproducible dataset creation
+- training with MLflow tracking
+- artifact versioning in S3 (MinIO)
+- API deployment (FastAPI)
+- user interface (Streamlit)
+- docker-compose for local orchestration
+- (optional) Airflow + Kubernetes + CI/CD GitHub Actions
 
-> **Main student:** **Arnaud Fernandes**
+Author: **Arnaud Fernandes**
 
 ---
 
-## 1) Repository structure
+## What the system does end-to-end
+
+1) download raw images
+2) train a ResNet18 (transfer learning)
+3) log metrics + artifacts into MLflow
+4) push best `.pt` model → MinIO (S3)
+5) FastAPI loads the latest model at startup
+6) Streamlit allows a user to drag & drop an image and see prediction
+
+result: fully automated ML product, not just code
+
+---
+
+## Architecture (text version diagram)
+
+User   → Streamlit → FastAPI → Model → Response
+                                ↑
+                               S3 (model versions)
+                              MLflow (metrics)
+
+dataset can come from local CSV OR SQL + S3 ingestion
+
+---
+
+## Repository structure
 
 .
-├─ src/
-│  ├─ data/
-│  ├─ model/           ← training, registry, inference
-│  ├─ api/             ← FastAPI app
-│  └─ utils/
-├─ webapp/             ← Streamlit UI
-├─ docker/             ← Dockerfiles
-├─ tests/              ← unit & integration tests
-├─ docker-compose.yml
-├─ docker-compose.app.yml
-├─ docker-compose.db.yml
-└─ README.md
+├─ src/data/             → dataset ingestion, CSV, SQL, S3 push/pull
+├─ src/model/            → training / inference / registry → MLflow
+├─ src/api/              → FastAPI inference server
+├─ src/utils/            → config helpers (ENV based)
+├─ webapp/               → Streamlit UI
+├─ docker/               → Dockerfiles
+├─ data/raw/             → local images + metadata.csv
+├─ tests/                → tests
+└─ docker-compose*.yml   → launch dev stack (minio/mlflow/api/ui/db)
 
 ---
 
-## 2) Functional Components
+## How to run locally (development)
 
-| Component | Technology |
-|----------|------------|
-| Model | PyTorch — ResNet18 |
-| Tracking + Registry | MLflow |
-| Artifact Store | MinIO S3 |
-| API | FastAPI / Uvicorn |
-| Web UI | Streamlit |
-| Containerization | Docker |
-| Local Orchestration | docker-compose |
-| CI/CD | GitHub Actions (to be added) |
-| Datastore (optional) | SQL table `plants_data` |
+### 1) Launch infra (MinIO + MLflow locally)
 
----
-
-## 3) Pipeline Summary
-
-1) Data is downloaded from URLs (greenr-airflow dataset)  
-2) (Optional) insert metadata into SQL  
-3) (Optional) Airflow DAG downloads images + pushes to MinIO  
-4) Training script trains ResNet18  
-5) MLflow logs metrics & model version  
-6) Model is saved + pushed to S3 under `plant-models/models/`  
-7) API loads latest model from S3 at startup  
-8) WebApp sends images to API to get predictions
-
----
-
-## 4) MLflow / S3 Proof of Work
-
-Artifacts stored under:
-s3://plant-models/models/
-Example file after training:
-model_1762541755.pt
----
-
-## 5) How to run locally (dev)
-
-```bash
 docker compose up -d minio mlflow
+
+### 2) download small dataset (if needed)
+
+python -m src.data.fetch_image
+
+### 3) train model
+
 python -m src.model.train
+
+the best `.pt` is saved locally and pushed into S3 (plant-models/models/*)
+
+### 4) launch API locally
+
 uvicorn src.api.main:app --reload
+
+### 5) launch Streamlit UI
+
 streamlit run webapp/app.py
 
-curl -s http://127.0.0.1:8000/health
+---
 
-curl -s -X POST http://127.0.0.1:8000/predict \
-  -F "file=@data/raw/dandelion_00000010.jpg"
+## API smoke test
 
-curl -s -X POST http://127.0.0.1:8000/predict \
-  -F "file=@data/raw/grass_00000010.jpg"
+curl http://127.0.0.1:8000/health
 
-  ghcr.io/castelsasha/mlops-project-dandelion-api:latest
-
-  --------------------------------------------------------------------------------------------
-
-ça c’est 100% propre  
-→ tu le colles directement dans ton README.md
+curl -X POST http://127.0.0.1:8000/predict -F "file=@data/raw/example.jpg"
 
 ---
 
-si validé → réponds juste :  
+## Where models are stored
 
-**“go SQL”**  
-et j’enchaîne instant avec `plants_data.sql` (le fichier optionnel de l’énoncé).
+MinIO bucket: `plant-models/models/`  
+each training run produces a timestamped `.pt`
+
+best model (by val F1) overwrites API target
+
+---
+
+## CI/CD & Kubernetes (optional)
+
+- artifact container images pushed to GHCR
+- Deployment updated automatically
+- API pods reload model on startup
+- Airflow DAGs can trigger continuous training
+
+---
+
+## Why this project matters
+
+this repo demonstrates a real production pipeline:  
+**not just training → but deploying + monitoring + versioning**
+
+This is the core of modern ML engineer work.

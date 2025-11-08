@@ -1,0 +1,61 @@
+# -----------------------------------------------------------------------------
+# Optional orchestration layer (Airflow) for the SQL-to-S3 extraction DAG.
+# Spin this up only if you implement the DAG; otherwise keep the file as
+# documentation of how you'd run orchestration locally.
+# -----------------------------------------------------------------------------
+version: "3.8"
+
+services:
+  airflow-webserver:
+    image: apache/airflow:2.10.3
+    depends_on:
+      - airflow-scheduler
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-db/airflow
+      # Install extra libs inside the Airflow image on startup (for operators/hooks)
+      _PIP_ADDITIONAL_REQUIREMENTS: "boto3 mysql-connector-python"
+    command: webserver
+    ports:
+      - "8081:8080"   # Airflow UI at http://127.0.0.1:8081
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+    env_file:
+      - .env
+    restart: unless-stopped
+
+  airflow-scheduler:
+    image: apache/airflow:2.10.3
+    depends_on:
+      - airflow-db
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-db/airflow
+      _PIP_ADDITIONAL_REQUIREMENTS: "boto3 mysql-connector-python"
+    command: scheduler
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+    env_file:
+      - .env
+    restart: unless-stopped
+
+  airflow-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    ports:
+      - "5433:5432"  # avoid clashing with your other Postgres on 5432
+    volumes:
+      - airflow_db_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  airflow_db_data:

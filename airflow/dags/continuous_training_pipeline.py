@@ -1,32 +1,71 @@
-from datetime import datetime, timedelta
-from airflow import DAG
-from airflow.operators.bash import BashOperator
+# airflow/dags/continuous_training_pipeline.py
+from __future__ import annotations
 
-default_args = {
+import os
+from datetime import timedelta
+import pendulum
+
+from airflow.decorators import dag, task
+from airflow.exceptions import AirflowFailException
+
+# This DAG fetches the dataset (local CSV/images) and then trains the model.
+# It relies on your repo code:
+#   - python -m src.data.fetch_image
+#   - python -m src.model.train
+#
+# Notes:
+# - We keep tasks as Python callables that shell out to your modules.
+# - Retries & timeouts make failures visible but resilient.
+# - Use env inherited from `env_file: .env` in docker-compose.airflow.yml.
+
+DEFAULT_ARGS = {
     "owner": "mlops-team",
-    "depends_on_past": False,
     "retries": 1,
     "retry_delay": timedelta(minutes=5),
 }
 
-with DAG(
+@dag(
     dag_id="continuous_training_pipeline",
-    description="CT: fetch dataset -> train model -> log to MLflow (+ upload .pt if configured)",
-    default_args=default_args,
-    start_date=datetime(2025, 10, 28),
-    schedule_interval="0 2 * * *",  # tous les jours à 02:00
+    description="CT: fetch dataset -> train model -> log to MLflow (+ upload .pt to MinIO)",
+    default_args=DEFAULT_ARGS,
+    start_date=pendulum.datetime(2025, 10, 28, tz="Europe/Paris"),
+    schedule="0 2 * * *",  # every day at 02:00
     catchup=False,
     tags=["ct", "training", "mlflow"],
-) as dag:
+    max_active_runs=1,
+)
+def continuous_training_pipeline():
 
-    fetch_data = BashOperator(
-        task_id="fetch_latest_data",
-        bash_command="python -m src.data.fetch_image",
-    )
+    @task.execution_timeout(timedelta(minutes=15))
+    def fetch_latest_data():
+        """
+        Run the local fetch script to download/refresh images + metadata.csv.
+        We shell out to keep the exact same codepath as your CLI usage.
+        """
+        import subprocess, sys
+        cmd = [sys.executable, "-m", "src.data.fetch_image"]
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        print(res.stdout)
+        if res.returncode != 0:
+            print(res.stderr)
+            raise AirflowFailException("fetch_image failed")
 
-    train_model = BashOperator(
-        task_id="train_and_register_model",
-        bash_command="python -m src.model.train",
-    )
+    @task.execution_timeout(timedelta(minutes=60))
+    def train_and_register_model():
+        """
+        Run the training script. It logs to MLflow and uploads the best .pt to MinIO.
+        """
+        import subprocess, sys
+        cmd = [sys.executable, "-m", "src.model.train"]
+        env = os.environ.copy()
+        # Example: override planning epochs for CT if you want
+        # env["EPOCHS"] = os.getenv("EPOCHS", "10")
+        res = subprocess.run(cmd, env=env, capture_output=True, text=True)
+        print(res.stdout)
+        if res.returncode != 0:
+            print(res.stderr)
+            raise AirflowFailException("training failed")
 
-    fetch_data >> train_model
+    fetch_latest_data() >> train_and_register_model()
+
+dag = continuous_training_pipeline()

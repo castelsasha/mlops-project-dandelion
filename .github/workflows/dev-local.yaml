@@ -2,34 +2,47 @@ name: Local CICD (no registry)
 
 on:
   push:
-    branches: ["arnaud-dev"]
+    branches: ["arnaud-dev"]   # only your dev branch
 
 jobs:
   deploy:
+    # Requires a self-hosted runner with Docker & kubectl configured
     runs-on: self-hosted
+    timeout-minutes: 20
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Build the API image locally (tag used only on your machine)
       - name: Build Docker image locally
         run: |
           docker build -f docker/api.Dockerfile -t dandelion-api:latest .
 
+      # Apply k8s manifests idempotently to your local cluster
       - name: Apply manifests (idempotent)
         run: |
+          set -euo pipefail
           kubectl apply -f k8s/namespace.yaml
           kubectl apply -f k8s/configmap.yaml
+          # create-or-reuse secret (ignore if exists)
           kubectl apply -f k8s/secret.yaml || true
           kubectl apply -f k8s/deployment.yaml
           kubectl apply -f k8s/service.yaml
 
+      # Rollout restart to pick up the freshly built local image
       - name: Restart deployment
         run: |
           kubectl -n dandelion rollout restart deployment dandelion-api
           kubectl -n dandelion rollout status deployment dandelion-api --timeout=120s
 
+      # Very small smoke test (adapt if service is exposed differently)
       - name: Smoke test
         run: |
-          # Docker Desktop/Minikube: service sur localhost (selon ton mapping)
-          sleep 2
-          curl -f http://localhost:8000/health
+          # If your service is NodePort/LoadBalancer you can curl it directly.
+          # For ClusterIP, you could port-forward temporarily:
+          kubectl -n dandelion port-forward deployment/dandelion-api 8000:8000 >/dev/null 2>&1 &
+          PF_PID=$!
+          sleep 3
+          curl -fsS http://127.0.0.1:8000/health
+          kill $PF_PID || true

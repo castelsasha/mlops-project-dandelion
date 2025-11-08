@@ -1,13 +1,24 @@
+# -----------------------------------------------------------------------------
+# Exclude local-only files from Docker build context.
+# This keeps images small and prevents leaking local data/secrets into images.
+# -----------------------------------------------------------------------------
+
+# Virtual env & Python caches
 .venv
 __pycache__/
 *.pyc
 
+# Git metadata
 .git
 .gitignore
+
+# Local secrets (never copy .env into images)
 .env
 
+# Notebooks cache
 .ipynb_checkpoints/
 
+# Local runtime artifacts (recreated in containers)
 mlruns/
 models/
 data/
