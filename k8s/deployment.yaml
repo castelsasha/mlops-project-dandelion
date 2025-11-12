@@ -1,10 +1,3 @@
-# k8s/deployment.yaml
-# Purpose: Run the API as a Deployment with 2 replicas, health checks, and a writable /models cache.
-# Key points:
-# - Uses envFrom to import non-sensitive config (ConfigMap) and S3 credentials (Secret).
-# - Readiness/Liveness probes hit /health (implemented in FastAPI).
-# - emptyDir volume provides a writable cache for downloaded models.
-
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -13,7 +6,7 @@ metadata:
   labels:
     app: dandelion-api
 spec:
-  replicas: 2                       # Horizontal redundancy for availability
+  replicas: 2
   selector:
     matchLabels:
       app: dandelion-api
@@ -22,54 +15,31 @@ spec:
       labels:
         app: dandelion-api
     spec:
-      # imagePullSecrets:
-      # - name: ghcr-creds        # uncomment if your registry is private
-
       containers:
         - name: dandelion-api
-          image: ghcr.io/<owner>/<repo>/dandelion-api:latest   # TODO: replace with your built image (pin a tag/sha)
+          image: dandelion-api:latest          # <-- image locale buildée par le runner
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
-
-          # Import configuration and credentials as environment variables
           envFrom:
             - configMapRef:
                 name: dandelion-api-config
             - secretRef:
                 name: s3-credentials
-
-          # Readiness probe: only send traffic when the app is ready
           readinessProbe:
-            httpGet:
-              path: /health
-              port: 8000
+            httpGet: { path: /health, port: 8000 }
             initialDelaySeconds: 5
             periodSeconds: 10
-
-          # Liveness probe: restart the container if the health endpoint fails
           livenessProbe:
-            httpGet:
-              path: /health
-              port: 8000
+            httpGet: { path: /health, port: 8000 }
             initialDelaySeconds: 10
             periodSeconds: 20
-
-          # Resource requests/limits help the scheduler and prevent noisy-neighbor issues
           resources:
-            requests:
-              cpu: "100m"
-              memory: "256Mi"
-            limits:
-              cpu: "500m"
-              memory: "512Mi"
-
-          # Writable cache where the API downloads the latest model from S3/MinIO
+            requests: { cpu: "100m", memory: "256Mi" }
+            limits:   { cpu: "500m", memory: "512Mi" }
           volumeMounts:
             - name: model-cache
               mountPath: /models
-
-      # Ephemeral cache volume (lifetime = Pod lifetime)
       volumes:
         - name: model-cache
           emptyDir: {}
