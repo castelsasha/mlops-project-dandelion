@@ -10,12 +10,10 @@ metadata:
   name: dandelion-api
   namespace: dandelion
 spec:
+  type: ClusterIP
   selector:
     app: dandelion-api
-  type: LoadBalancer       # change to NodePort if no LB is available
   ports:
     - name: http
-      protocol: TCP
-      port: 8000           # service port
-      targetPort: 8000     # container port (FastAPI/Uvicorn)
-      # nodePort: 30080    # uncomment if using type: NodePort (range usually 30000-32767)
+      port: 8000
+      targetPort: 8000

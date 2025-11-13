@@ -58,8 +58,6 @@ def continuous_training_pipeline():
         import subprocess, sys
         cmd = [sys.executable, "-m", "src.model.train"]
         env = os.environ.copy()
-        # Example: override planning epochs for CT if you want
-        # env["EPOCHS"] = os.getenv("EPOCHS", "10")
         res = subprocess.run(cmd, env=env, capture_output=True, text=True)
         print(res.stdout)
         if res.returncode != 0:

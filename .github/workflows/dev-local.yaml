@@ -1,40 +1,39 @@
-name: Local CICD (no registry)
+name: Local CI/CD (self-hosted, Docker Desktop + K8s)
 
 on:
   push:
-    branches: ["main"]   # <-- ou "arnaud-dev" si tu veux
+    branches: [ "main", "arnaud-dev" ]
+    paths:
+      - "src/**"
+      - "docker/**"
+      - "k8s/**"
+      - "requirements.txt"
+      - "scripts/deploy_local.sh"
+      - ".github/workflows/dev-local.yaml"
+  workflow_dispatch:
+
+concurrency:
+  group: dev-local-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   deploy:
-    runs-on: self-hosted            # ton runner local (Docker + kubectl)
+    runs-on: self-hosted
     timeout-minutes: 20
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build Docker image locally
-        run: |
-          docker build -f docker/api.Dockerfile -t dandelion-api:latest .
+      - name: Ensure script is executable
+        run: chmod +x scripts/deploy_local.sh
 
-      - name: Apply manifests (idempotent)
+      - name: Deploy to local Kubernetes
+        env:
+          PATH: /usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin
         run: |
-          set -euo pipefail
-          kubectl apply -f k8s/namespace.yaml
-          kubectl apply -f k8s/configmap.yaml
-          kubectl apply -f k8s/secret.yaml || true
-          kubectl apply -f k8s/deployment.yaml
-          kubectl apply -f k8s/service.yaml
+          ./scripts/deploy_local.sh
 
-      - name: Restart deployment
+      - name: Show API health (optional)
         run: |
-          kubectl -n dandelion rollout restart deployment dandelion-api
-          kubectl -n dandelion rollout status deployment dandelion-api --timeout=120s
-
-      - name: Smoke test
-        run: |
-          kubectl -n dandelion port-forward deployment/dandelion-api 8000:8000 >/dev/null 2>&1 &
-          PF_PID=$!
-          sleep 3
-          curl -fsS http://127.0.0.1:8000/health
-          kill $PF_PID || true
+          curl -fsS http://127.0.0.1:8000/health | python -m json.tool

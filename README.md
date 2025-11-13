@@ -1,116 +1,147 @@
-# MLOps Project — Dandelion vs Grass Classification
+# 🌼 MLOps Project — Dandelion vs Grass Classification
 
 Goal: classify images and detect if the plant is **dandelion** or **grass**.
 
-This repository is not “just training a model”.  
-It implements a COMPLETE modern MLOps stack:
+This repository implements a **complete modern MLOps stack**, not just a model:
+- reproducible dataset creation  
+- training with MLflow tracking  
+- model artifact versioning in S3 (MinIO)  
+- API serving with FastAPI  
+- WebApp with Streamlit  
+- Docker Compose for local orchestration  
+- optional Kubernetes deployment + GitHub Actions CI/CD  
 
-- reproducible dataset creation
-- training with MLflow tracking
-- artifact versioning in S3 (MinIO)
-- API deployment (FastAPI)
-- user interface (Streamlit)
-- docker-compose for local orchestration
-- (optional) Airflow + Kubernetes + CI/CD GitHub Actions
-
-Author: **Arnaud Fernandes**
+Author: **Arnaud Fernandes - Sasha Castel - Saber Dhib - Noa Sebag - Camil Nitel**
 
 ---
 
-## What the system does end-to-end
+## ⚙️ End-to-End Pipeline Overview
 
-1) download raw images
-2) train a ResNet18 (transfer learning)
-3) log metrics + artifacts into MLflow
-4) push best `.pt` model → MinIO (S3)
-5) FastAPI loads the latest model at startup
-6) Streamlit allows a user to drag & drop an image and see prediction
+1. Download and clean raw images  
+2. Train a **ResNet-18** (transfer learning, PyTorch)  
+3. Track experiments in **MLflow**  
+4. Push best `.pt` checkpoint to **MinIO (S3)**  
+5. Serve predictions via **FastAPI**  
+6. Interact through **Streamlit** (drag-and-drop interface)
 
-result: fully automated ML product, not just code
-
----
-
-## Architecture (text version diagram)
-
-User   → Streamlit → FastAPI → Model → Response
-                                ↑
-                               S3 (model versions)
-                              MLflow (metrics)
-
-dataset can come from local CSV OR SQL + S3 ingestion
+Result: a fully automated ML product — **train → version → serve → interact**
 
 ---
 
-## Repository structure
+## 🧩 Architecture
 
-.
-├─ src/data/             → dataset ingestion, CSV, SQL, S3 push/pull
-├─ src/model/            → training / inference / registry → MLflow
-├─ src/api/              → FastAPI inference server
-├─ src/utils/            → config helpers (ENV based)
-├─ webapp/               → Streamlit UI
-├─ docker/               → Dockerfiles
-├─ data/raw/             → local images + metadata.csv
-├─ tests/                → tests
-└─ docker-compose*.yml   → launch dev stack (minio/mlflow/api/ui/db)
+User → Streamlit → FastAPI → Model → Prediction  
+           ↑  
+        S3 (models)  
+        MLflow (metrics)
 
 ---
 
-## How to run locally (development)
+## 🗂 Repository structure
 
-### 1) Launch infra (MinIO + MLflow locally)
+.  
+├─ src/data/    → data ingestion & preprocessing  
+├─ src/model/   → training, evaluation, S3 registry  
+├─ src/api/    → FastAPI inference service  
+├─ src/utils/   → config helpers (env-based)  
+├─ webapp/    → Streamlit interface  
+├─ docker/    → Dockerfiles  
+├─ k8s/      → Kubernetes manifests  
+├─ scripts/    → deployment automation  
+├─ data/raw/   → local dataset  
+├─ .github/workflows/ → CI/CD workflows  
+└─ docker-compose*.yml → local orchestration  
 
+---
+
+## 🧪 Run locally (development mode)
+
+# Setup environment
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+
+# Start infra (MinIO + MLflow)
 docker compose up -d minio mlflow
 
-### 2) download small dataset (if needed)
-
-python -m src.data.fetch_image
-
-### 3) train model
-
+# Train model
 python -m src.model.train
 
-the best `.pt` is saved locally and pushed into S3 (plant-models/models/*)
-
-### 4) launch API locally
-
+# Run API (FastAPI)
 uvicorn src.api.main:app --reload
 
-### 5) launch Streamlit UI
+# Healthcheck & prediction
+curl http://127.0.0.1:8000/health
+curl -X POST http://127.0.0.1:8000/predict -F "file=@data/raw/dandelion_00000010.jpg"
 
+# Run Streamlit UI
 streamlit run webapp/app.py
+# → http://localhost:8501
 
 ---
 
-## API smoke test
+## 🐳 Run with Docker Compose (full stack)
+
+docker compose -f docker-compose.yml -f docker-compose.app.yml up -d minio mlflow api webapp
+
+# Access:
+# MinIO:  http://127.0.0.1:9001
+# MLflow: http://127.0.0.1:5001
+# API:    http://127.0.0.1:8000/docs
+# WebApp: http://localhost:8501
 
 curl http://127.0.0.1:8000/health
 
-curl -X POST http://127.0.0.1:8000/predict -F "file=@data/raw/example.jpg"
+---
+
+## ☸️ Run with Kubernetes (Docker Desktop)
+
+# Apply manifests
+kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/configmap.yaml
+kubectl apply -f k8s/secret.yaml
+kubectl apply -f k8s/deployment.yaml
+kubectl apply -f k8s/service.yaml
+
+# Check deployment
+kubectl -n dandelion get pods,svc
+
+# Forward API to localhost
+kubectl -n dandelion port-forward svc/dandelion-api 8000:8000
+curl http://127.0.0.1:8000/health
+
+# Or use the helper script
+chmod +x scripts/deploy_local.sh
+./scripts/deploy_local.sh
 
 ---
 
-## Where models are stored
+## 🔁 Local CI/CD (self-hosted runner)
 
-MinIO bucket: `plant-models/models/`  
-each training run produces a timestamped `.pt`
+A local GitHub Actions workflow (`.github/workflows/dev-local.yaml`) automates:
+- Docker image build (`dandelion-api:latest`)
+- Kubernetes deployment & restart
+- Healthcheck smoke test  
 
-best model (by val F1) overwrites API target
-
----
-
-## CI/CD & Kubernetes (optional)
-
-- artifact container images pushed to GHCR
-- Deployment updated automatically
-- API pods reload model on startup
-- Airflow DAGs can trigger continuous training
+To run it, configure a **self-hosted runner** with Docker + kubectl enabled.
 
 ---
 
-## Why this project matters
+## 🧱 Model Storage
 
-this repo demonstrates a real production pipeline:  
-**not just training → but deploying + monitoring + versioning**
+Models are saved automatically after training:  
+- local path → `models/model_<timestamp>_best.pt`  
+- remote copy → `MinIO / plant-models/models/`  
 
-This is the core of modern ML engineer work.
+The API automatically loads the latest model from MinIO at startup.
+
+---
+
+## 💡 Why this project matters
+
+This project demonstrates a **real MLOps pipeline**:
+- automated data → training → deployment  
+- reproducible experiment tracking with MLflow  
+- containerized, production-ready API  
+- live monitoring via health & prediction endpoints  
+
+A true **end-to-end ML product**, not just a notebook.
